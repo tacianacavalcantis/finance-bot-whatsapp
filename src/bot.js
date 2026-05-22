@@ -9,6 +9,9 @@ class FinanceBot {
     constructor() {
         this.client = null;
         this.initialized = false;
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
+        this.reconnectDelay = 5000; // 5 segundos
     }
 async initialize() {
     try {
@@ -40,14 +43,36 @@ async initialize() {
     
 
     setupEventHandlers() {
-        this.client.on('qr', (qr) => {
-            logger.info('QR Code recebido, escaneie com WhatsApp');
-            qrcode.generate(qr, { small: true });
-        });
-        
+       this.client.on('disconnected', async (reason) => {
+    logger.warn('WhatsApp desconectado:', reason);
+    this.initialized = false;
+    await this.handleReconnect();
+});
+    async handleReconnect() {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+        logger.error(`Máximo de tentativas (${this.maxReconnectAttempts}) atingido. Encerrando.`);
+        process.exit(1);
+    }
+
+    this.reconnectAttempts++;
+    const delay = this.reconnectDelay * this.reconnectAttempts; // backoff progressivo
+    logger.info(`Tentativa ${this.reconnectAttempts}/${this.maxReconnectAttempts} em ${delay / 1000}s...`);
+
+    await new Promise(resolve => setTimeout(resolve, delay));
+
+    try {
+        // Destruir cliente anterior antes de recriar
+        await this.client.destroy();
+    } catch (_) {}
+
+    logger.info('Reiniciando cliente WhatsApp...');
+    await this.initialize();
+    await this.client.initialize();
+}    
      /*    this.client.on('ready', () => {
             logger.info('Bot WhatsApp conectado com sucesso!');
             this.initialized = true;
+            this.reconnectAttempts = 0;
             this.sendStartupMessage();
         }); */
         
